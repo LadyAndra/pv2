@@ -3,10 +3,6 @@
 <head>
   <meta charset="UTF-8">
 
-  <!--
-    viewport-fit=cover allows the layout to respect phone safe areas
-    while still using the full available screen.
-  -->
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1.0, viewport-fit=cover"
@@ -15,16 +11,17 @@
   <title>Prairie Village</title>
 
   <!--
-    All paths are relative so the project works on GitHub Pages.
+    The version number forces browsers to fetch the newest CSS file.
+    Increase this number whenever caching causes trouble.
   -->
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./styles.css?v=23">
 </head>
 
 <body>
   <main class="game-shell">
     <header class="game-header">
       <p class="eyebrow">Prairie Village</p>
-      <h1>Birthday Build — Phase 2.2</h1>
+      <h1>Birthday Build — Phase 2.3</h1>
 
       <p class="instructions">
         Use Arrow keys or WASD on a computer. On a phone, drag anywhere
@@ -34,12 +31,6 @@
 
     <section class="canvas-frame" aria-label="Prairie Village game">
       <div class="game-stage">
-        <!--
-          The canvas has a fixed internal resolution.
-
-          CSS may make it appear larger or smaller, but the game itself
-          always draws into this same internal pixel grid.
-        -->
         <canvas
           id="game-canvas"
           width="320"
@@ -49,14 +40,6 @@
           Your browser does not support the HTML canvas element.
         </canvas>
 
-        <!--
-          Invisible mobile controls cover the game stage.
-
-          The left half becomes a floating joystick wherever the player
-          first places a thumb.
-
-          The right half acts as one large invisible action button.
-        -->
         <div
           id="touch-controls"
           class="touch-controls"
@@ -87,10 +70,10 @@
   </main>
 
   <!--
-    sprites.js must load first because game.js uses the sprite data
-    stored inside it.
+    Version numbers force the browser to fetch the current JavaScript
+    instead of reusing an older cached copy.
   -->
-  <script src="./sprites.js"></script>
-  <script src="./game.js"></script>
+  <script src="./sprites.js?v=23"></script>
+  <script src="./game.js?v=23"></script>
 </body>
 </html>
