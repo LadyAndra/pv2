@@ -11,21 +11,44 @@
   <title>Prairie Village</title>
 
   <!--
-    The version number forces browsers to fetch the newest CSS file.
-    Increase this number whenever caching causes trouble.
+    Version numbers help prevent the browser from loading old cached files.
+    Increase this number whenever you replace the CSS or JavaScript.
   -->
-  <link rel="stylesheet" href="./styles.css?v=23">
+  <link rel="stylesheet" href="./styles.css?v=24">
 </head>
 
 <body>
+  <!--
+    This message appears on phones and small touch devices held vertically.
+
+    The game itself is hidden until the device is turned sideways.
+  -->
+  <div class="orientation-gate" aria-live="polite">
+    <div class="orientation-card">
+      <div class="orientation-icon" aria-hidden="true">
+        ↻
+      </div>
+
+      <p class="orientation-eyebrow">Prairie Village</p>
+
+      <h1>Turn your phone sideways</h1>
+
+      <p>
+        Prairie Village is designed to be played in landscape mode.
+      </p>
+    </div>
+  </div>
+
   <main class="game-shell">
     <header class="game-header">
       <p class="eyebrow">Prairie Village</p>
-      <h1>Birthday Build — Phase 2.3</h1>
+
+      <h1>Birthday Build — Phase 2.4</h1>
 
       <p class="instructions">
-        Use Arrow keys or WASD on a computer. On a phone, drag anywhere
-        on the left half to move and tap anywhere on the right half to act.
+        Use Arrow keys or WASD on a computer. On a phone, hold the device
+        sideways, drag anywhere on the left half to move, and tap anywhere
+        on the right half to act.
       </p>
     </header>
 
@@ -70,10 +93,9 @@
   </main>
 
   <!--
-    Version numbers force the browser to fetch the current JavaScript
-    instead of reusing an older cached copy.
+    Version numbers force the browser to request the current JavaScript.
   -->
-  <script src="./sprites.js?v=23"></script>
-  <script src="./game.js?v=23"></script>
+  <script src="./sprites.js?v=24"></script>
+  <script src="./game.js?v=24"></script>
 </body>
 </html>
