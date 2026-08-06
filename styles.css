@@ -1,13 +1,14 @@
 /*
   Prairie Village
-  Phase 2.4 — Landscape Mobile Presentation
+  Phase 2.5 — Full-Screen Landscape Touch Controls
 
   This file provides:
 
   1. The normal desktop page presentation
-  2. Invisible split-screen mobile controls
-  3. A portrait-mode rotation message
-  4. A near-fullscreen landscape mobile layout
+  2. A portrait-mode rotation message
+  3. A near-fullscreen landscape mobile layout
+  4. Full-screen invisible mobile controls
+  5. A 60% movement zone and 40% action zone
 
   The game world itself is drawn in game.js.
 */
@@ -97,9 +98,6 @@ h1 {
     0 8px 24px rgb(39 49 38 / 18%);
 }
 
-/*
-  game-stage positions both the canvas and the invisible mobile overlay.
-*/
 .game-stage {
   position: relative;
 
@@ -133,16 +131,32 @@ h1 {
 }
 
 /* ------------------------------------------------------------------ */
-/* Invisible mobile split-control overlay                              */
+/* Full-screen invisible mobile controls                               */
 /* ------------------------------------------------------------------ */
 
+/*
+  The touch-control layer is attached to the viewport rather than the map.
+
+  This means the player can place their thumbs comfortably near the
+  physical edges of the phone. Touches also work in the dark space beside
+  the centered 4:3 game map.
+*/
 .touch-controls {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: 2;
+  z-index: 50;
 
   display: none;
-  grid-template-columns: 1fr 1fr;
+
+  /*
+    Movement receives 60% of the screen.
+    Action receives 40% of the screen.
+  */
+  grid-template-columns: 60fr 40fr;
+
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
 
   background: transparent;
 
@@ -264,36 +278,17 @@ h1 {
 }
 
 /* ------------------------------------------------------------------ */
-/* Touch-device controls                                               */
-/* ------------------------------------------------------------------ */
-
-/*
-  Show the invisible control overlay whenever the device is touch-like.
-
-  The width fallback helps devices that report unusual pointer settings.
-*/
-@media (hover: none) and (pointer: coarse), (max-width: 700px) {
-  .touch-controls {
-    display: grid;
-  }
-}
-
-/* ------------------------------------------------------------------ */
 /* Portrait phones and small portrait touch devices                    */
 /* ------------------------------------------------------------------ */
 
-/*
-  In portrait orientation, hide the game and ask the player to rotate
-  the device.
-
-  Desktop computers are not affected unless the browser window is
-  unusually narrow.
-*/
 @media
   (orientation: portrait) and (hover: none) and (pointer: coarse),
   (orientation: portrait) and (max-width: 700px) {
 
+  html,
   body {
+    width: 100%;
+    height: 100%;
     overflow: hidden;
   }
 
@@ -301,7 +296,8 @@ h1 {
     display: grid;
   }
 
-  .game-shell {
+  .game-shell,
+  .touch-controls {
     display: none;
   }
 }
@@ -310,12 +306,6 @@ h1 {
 /* Landscape phones and tablets                                       */
 /* ------------------------------------------------------------------ */
 
-/*
-  On a landscape touch device, the game becomes the page.
-
-  The heading, instructions, footer, decorative border, and outside
-  spacing are removed so the canvas receives as much room as possible.
-*/
 @media
   (orientation: landscape) and (hover: none) and (pointer: coarse),
   (orientation: landscape) and (max-height: 600px) {
@@ -325,6 +315,8 @@ h1 {
     width: 100%;
     height: 100%;
     overflow: hidden;
+
+    touch-action: none;
   }
 
   body {
@@ -336,6 +328,13 @@ h1 {
 
   .orientation-gate {
     display: none;
+  }
+
+  /*
+    Activate the full-screen 60/40 control surface.
+  */
+  .touch-controls {
+    display: grid;
   }
 
   .game-shell {
@@ -382,8 +381,9 @@ h1 {
   /*
     Preserve the original 4:3 world.
 
-    On extra-wide phones, the unused space remains beside the game
-    rather than stretching or cropping the artwork.
+    On extra-wide phones, unused space remains beside the game rather
+    than stretching or cropping the artwork. That unused space is still
+    part of the full-screen touch-control surface.
   */
   .game-stage {
     width: min(
