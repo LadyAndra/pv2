@@ -14,7 +14,7 @@
     Version numbers help prevent the browser from loading old cached files.
     Increase this number whenever you replace the CSS or JavaScript.
   -->
-  <link rel="stylesheet" href="./styles.css?v=24">
+  <link rel="stylesheet" href="./styles.css?v=25">
 </head>
 
 <body>
@@ -43,12 +43,12 @@
     <header class="game-header">
       <p class="eyebrow">Prairie Village</p>
 
-      <h1>Birthday Build — Phase 2.4</h1>
+      <h1>Birthday Build — Phase 2.5</h1>
 
       <p class="instructions">
         Use Arrow keys or WASD on a computer. On a phone, hold the device
-        sideways, drag anywhere on the left half to move, and tap anywhere
-        on the right half to act.
+        sideways, drag anywhere on the left side to move, and tap anywhere
+        on the right side to act.
       </p>
     </header>
 
@@ -62,26 +62,6 @@
         >
           Your browser does not support the HTML canvas element.
         </canvas>
-
-        <div
-          id="touch-controls"
-          class="touch-controls"
-          aria-label="Mobile game controls"
-        >
-          <div
-            id="joystick-zone"
-            class="control-zone joystick-zone"
-            aria-label="Movement area"
-          ></div>
-
-          <div
-            id="action-zone"
-            class="control-zone action-zone"
-            role="button"
-            aria-label="Action"
-            aria-pressed="false"
-          ></div>
-        </div>
       </div>
     </section>
 
@@ -93,9 +73,41 @@
   </main>
 
   <!--
+    Full-screen invisible mobile controls.
+
+    These controls are outside the game-stage so they can cover the entire
+    phone screen, including any space beside the 4:3 game map.
+
+    Left 60%:
+    Floating movement joystick.
+
+    Right 40%:
+    Action control.
+  -->
+  <div
+    id="touch-controls"
+    class="touch-controls"
+    aria-label="Mobile game controls"
+  >
+    <div
+      id="joystick-zone"
+      class="control-zone joystick-zone"
+      aria-label="Movement area"
+    ></div>
+
+    <div
+      id="action-zone"
+      class="control-zone action-zone"
+      role="button"
+      aria-label="Action"
+      aria-pressed="false"
+    ></div>
+  </div>
+
+  <!--
     Version numbers force the browser to request the current JavaScript.
   -->
-  <script src="./sprites.js?v=24"></script>
-  <script src="./game.js?v=24"></script>
+  <script src="./sprites.js?v=25"></script>
+  <script src="./game.js?v=25"></script>
 </body>
 </html>
