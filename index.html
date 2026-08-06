@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+
+  <!--
+    Makes the page fit correctly on phones and tablets.
+    This does not add mobile controls yet.
+  -->
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>Prairie Village</title>
+
+  <!--
+    All paths are relative so the project works on GitHub Pages.
+  -->
+  <link rel="stylesheet" href="./styles.css">
+</head>
+
+<body>
+  <main class="game-shell">
+    <header class="game-header">
+      <p class="eyebrow">Prairie Village</p>
+      <h1>Birthday Build — Phase 2</h1>
+
+      <p class="instructions">
+        Move Mike with the Arrow keys or WASD.
+      </p>
+    </header>
+
+    <section class="canvas-frame" aria-label="Prairie Village game">
+      <!--
+        The canvas has a fixed internal resolution.
+
+        CSS may make it appear larger or smaller, but the game itself
+        always draws into this same internal pixel grid.
+      -->
+      <canvas
+        id="game-canvas"
+        width="320"
+        height="240"
+        aria-label="A small top-down Prairie Village map"
+      >
+        Your browser does not support the HTML canvas element.
+      </canvas>
+    </section>
+
+    <footer class="game-footer">
+      <p>
+        Mike walks. Henry follows. The neighborhood begins here.
+      </p>
+    </footer>
+  </main>
+
+  <!--
+    sprites.js must load first because game.js uses the sprite data
+    stored inside it.
+  -->
+  <script src="./sprites.js"></script>
+  <script src="./game.js"></script>
+</body>
+</html>
