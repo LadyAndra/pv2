@@ -2,7 +2,7 @@
 
 /*
   Prairie Village
-  Phase 2.1 — Mobile Split Controls
+  Phase 2.2 — Invisible Floating Mobile Controls
 
   This file contains:
 
@@ -10,12 +10,13 @@
   2. Letter-grid sprite rendering
   3. Map rendering
   4. Keyboard input
-  5. Left-thumb analog joystick input
-  6. Right-thumb action button input
+  5. Invisible left-half floating joystick input
+  6. Invisible right-half action input
   7. Mike movement
   8. Full-sprite map-boundary collision
   9. Henry's delayed following
-  10. The animation loop
+  10. Stable Henry directional facing
+  11. The animation loop
 
   It intentionally does not yet contain:
 
@@ -37,9 +38,7 @@ const canvas = document.getElementById("game-canvas");
 const context = canvas.getContext("2d");
 
 const joystickZone = document.getElementById("joystick-zone");
-const joystickBase = document.getElementById("joystick-base");
-const joystickKnob = document.getElementById("joystick-knob");
-const actionButton = document.getElementById("action-button");
+const actionZone = document.getElementById("action-zone");
 
 context.imageSmoothingEnabled = false;
 canvas.tabIndex = 0;
@@ -76,7 +75,16 @@ const gameState = {
   henry: {
     x: 54,
     y: 132,
-    direction: "right"
+    direction: "right",
+
+    /*
+      Henry remembers whether he is currently using a horizontal or
+      vertical sprite.
+
+      Near a diagonal, he keeps the current axis instead of changing
+      direction every frame.
+    */
+    facingAxis: "horizontal"
   },
 
   mikePositionHistory: [],
@@ -94,18 +102,24 @@ const input = {
   right: false,
 
   /*
-    Analog joystick values range from -1 to 1.
+    Floating joystick values range from -1 to 1.
   */
   joystickX: 0,
   joystickY: 0,
 
   /*
-    The action input is ready for the next gameplay feature.
-    It currently changes button state but does not trigger an in-game
-    interaction because no interaction system exists yet.
+    The action input is ready for a future interaction system.
   */
   action: false
 };
+
+/* ------------------------------------------------------------------ */
+/* Shared helpers                                                      */
+/* ------------------------------------------------------------------ */
+
+function clamp(value, minimum, maximum) {
+  return Math.max(minimum, Math.min(maximum, value));
+}
 
 /* ------------------------------------------------------------------ */
 /* Keyboard input                                                      */
@@ -144,6 +158,14 @@ function isMovementKey(key) {
   ].includes(key.toLowerCase());
 }
 
+function setActionState(isPressed) {
+  input.action = isPressed;
+
+  if (actionZone) {
+    actionZone.setAttribute("aria-pressed", String(isPressed));
+  }
+}
+
 window.addEventListener("keydown", (event) => {
   if (isMovementKey(event.key)) {
     event.preventDefault();
@@ -169,74 +191,76 @@ window.addEventListener("keyup", (event) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Mobile analog joystick                                              */
+/* Invisible floating joystick                                        */
 /* ------------------------------------------------------------------ */
 
 const joystickState = {
   activePointerId: null,
-  maximumRadius: 0
+  originX: 0,
+  originY: 0
 };
 
 /*
-  Keep a number inside a minimum and maximum value.
+  The joystick radius is measured in screen pixels because pointer
+  coordinates are screen coordinates.
+
+  This value remains comfortable across different phone sizes while
+  still allowing full movement without requiring a large thumb motion.
 */
-function clamp(value, minimum, maximum) {
-  return Math.max(minimum, Math.min(maximum, value));
+function getJoystickRadius() {
+  const zoneRectangle = joystickZone.getBoundingClientRect();
+
+  return clamp(
+    Math.min(zoneRectangle.width, zoneRectangle.height) * 0.28,
+    38,
+    72
+  );
 }
 
-/*
-  Reset the joystick to its resting position.
-*/
 function resetJoystick() {
   joystickState.activePointerId = null;
   input.joystickX = 0;
   input.joystickY = 0;
-
-  joystickBase.classList.remove("is-active");
-  joystickKnob.style.transform = "translate(-50%, -50%)";
 }
 
 /*
-  Convert a pointer position into normalized joystick input.
+  Convert the thumb's movement away from its original touch point into
+  analog input.
 
-  The base is fixed visually in the lower-left corner. The player may
-  touch anywhere in the left half; movement is calculated relative to
-  the visible base center so the control feels consistent.
+  The first touch location is the invisible joystick center.
 */
 function updateJoystickFromPointer(event) {
-  const baseRectangle = joystickBase.getBoundingClientRect();
-
-  const centerX = baseRectangle.left + baseRectangle.width / 2;
-  const centerY = baseRectangle.top + baseRectangle.height / 2;
-
-  const differenceX = event.clientX - centerX;
-  const differenceY = event.clientY - centerY;
+  const differenceX = event.clientX - joystickState.originX;
+  const differenceY = event.clientY - joystickState.originY;
 
   const distance = Math.hypot(differenceX, differenceY);
-  const maximumRadius = baseRectangle.width * 0.34;
-  const deadZone = maximumRadius * 0.15;
-
-  joystickState.maximumRadius = maximumRadius;
+  const maximumRadius = getJoystickRadius();
+  const deadZone = maximumRadius * 0.12;
 
   if (distance <= deadZone) {
     input.joystickX = 0;
     input.joystickY = 0;
-    joystickKnob.style.transform = "translate(-50%, -50%)";
     return;
   }
 
-  const limitedDistance = Math.min(distance, maximumRadius);
+  /*
+    Remove the dead zone smoothly instead of causing movement to jump
+    abruptly from zero.
+  */
+  const usableDistance = maximumRadius - deadZone;
+  const adjustedDistance = Math.min(
+    Math.max(distance - deadZone, 0),
+    usableDistance
+  );
+
+  const strength =
+    usableDistance > 0 ? adjustedDistance / usableDistance : 0;
+
   const directionX = differenceX / distance;
   const directionY = differenceY / distance;
 
-  const knobX = directionX * limitedDistance;
-  const knobY = directionY * limitedDistance;
-
-  input.joystickX = clamp(differenceX / maximumRadius, -1, 1);
-  input.joystickY = clamp(differenceY / maximumRadius, -1, 1);
-
-  joystickKnob.style.transform =
-    `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
+  input.joystickX = directionX * strength;
+  input.joystickY = directionY * strength;
 }
 
 joystickZone.addEventListener("pointerdown", (event) => {
@@ -247,10 +271,16 @@ joystickZone.addEventListener("pointerdown", (event) => {
   event.preventDefault();
 
   joystickState.activePointerId = event.pointerId;
-  joystickZone.setPointerCapture(event.pointerId);
-  joystickBase.classList.add("is-active");
+  joystickState.originX = event.clientX;
+  joystickState.originY = event.clientY;
 
-  updateJoystickFromPointer(event);
+  joystickZone.setPointerCapture(event.pointerId);
+
+  /*
+    The first touch establishes the center, so movement begins at zero.
+  */
+  input.joystickX = 0;
+  input.joystickY = 0;
 });
 
 joystickZone.addEventListener("pointermove", (event) => {
@@ -278,59 +308,84 @@ function finishJoystickPointer(event) {
 
 joystickZone.addEventListener("pointerup", finishJoystickPointer);
 joystickZone.addEventListener("pointercancel", finishJoystickPointer);
-joystickZone.addEventListener("lostpointercapture", resetJoystick);
+
+joystickZone.addEventListener("lostpointercapture", (event) => {
+  if (
+    joystickState.activePointerId === null ||
+    event.pointerId === joystickState.activePointerId
+  ) {
+    resetJoystick();
+  }
+});
 
 /* ------------------------------------------------------------------ */
-/* Mobile action button                                                */
+/* Invisible right-half action control                                 */
 /* ------------------------------------------------------------------ */
 
-function setActionState(isPressed) {
-  input.action = isPressed;
-  actionButton.classList.toggle("is-pressed", isPressed);
-  actionButton.setAttribute("aria-pressed", String(isPressed));
-}
+const actionState = {
+  activePointerId: null
+};
 
-function pressActionButton(event) {
-  event.preventDefault();
-  actionButton.setPointerCapture(event.pointerId);
-  setActionState(true);
-}
-
-function releaseActionButton(event) {
-  event.preventDefault();
-
-  if (actionButton.hasPointerCapture(event.pointerId)) {
-    actionButton.releasePointerCapture(event.pointerId);
+actionZone.addEventListener("pointerdown", (event) => {
+  if (actionState.activePointerId !== null) {
+    return;
   }
 
+  event.preventDefault();
+
+  actionState.activePointerId = event.pointerId;
+  actionZone.setPointerCapture(event.pointerId);
+  setActionState(true);
+});
+
+function finishActionPointer(event) {
+  if (event.pointerId !== actionState.activePointerId) {
+    return;
+  }
+
+  event.preventDefault();
+
+  if (actionZone.hasPointerCapture(event.pointerId)) {
+    actionZone.releasePointerCapture(event.pointerId);
+  }
+
+  actionState.activePointerId = null;
   setActionState(false);
 }
 
-actionButton.addEventListener("pointerdown", pressActionButton);
-actionButton.addEventListener("pointerup", releaseActionButton);
-actionButton.addEventListener("pointercancel", releaseActionButton);
-actionButton.addEventListener("lostpointercapture", () => {
-  setActionState(false);
+actionZone.addEventListener("pointerup", finishActionPointer);
+actionZone.addEventListener("pointercancel", finishActionPointer);
+
+actionZone.addEventListener("lostpointercapture", (event) => {
+  if (
+    actionState.activePointerId === null ||
+    event.pointerId === actionState.activePointerId
+  ) {
+    actionState.activePointerId = null;
+    setActionState(false);
+  }
 });
 
 /*
-  Prevent the button's synthetic click from scrolling or shifting focus
-  after a touch interaction.
+  Prevent synthetic clicks after touch interactions.
 */
-actionButton.addEventListener("click", (event) => {
+actionZone.addEventListener("click", (event) => {
   event.preventDefault();
 });
 
 /*
-  Clear every held input if the browser loses focus.
+  Clear all held inputs if the browser loses focus.
 */
 window.addEventListener("blur", () => {
   input.up = false;
   input.down = false;
   input.left = false;
   input.right = false;
-  setActionState(false);
+
   resetJoystick();
+
+  actionState.activePointerId = null;
+  setActionState(false);
 });
 
 /* ------------------------------------------------------------------ */
@@ -391,6 +446,7 @@ function drawLetterGridSprite(sprite, worldX, worldY, cellScale) {
       }
 
       context.fillStyle = color;
+
       context.fillRect(
         drawX + columnIndex * cellScale,
         drawY + rowIndex * cellScale,
@@ -439,12 +495,6 @@ function drawMap() {
 /* Mike movement                                                       */
 /* ------------------------------------------------------------------ */
 
-/*
-  Combine keyboard and analog joystick input.
-
-  The joystick provides smooth analog strength. Keyboard input remains
-  fully supported and can be used at the same time for testing.
-*/
 function getMovementVector() {
   let x = input.joystickX;
   let y = input.joystickY;
@@ -477,9 +527,11 @@ function getMovementVector() {
 
 function updateMikeDirection(movement) {
   if (Math.abs(movement.x) > Math.abs(movement.y)) {
-    gameState.mike.direction = movement.x < 0 ? "left" : "right";
+    gameState.mike.direction =
+      movement.x < 0 ? "left" : "right";
   } else if (Math.abs(movement.y) > 0.01) {
-    gameState.mike.direction = movement.y < 0 ? "up" : "down";
+    gameState.mike.direction =
+      movement.y < 0 ? "up" : "down";
   }
 }
 
@@ -491,10 +543,13 @@ function getMikeSprite() {
   switch (gameState.mike.direction) {
     case "up":
       return SPRITES.mikeUp;
+
     case "left":
       return SPRITES.mikeLeft;
+
     case "right":
       return SPRITES.mikeRight;
+
     case "down":
     default:
       return SPRITES.mikeDown;
@@ -505,10 +560,13 @@ function getHenrySprite() {
   switch (gameState.henry.direction) {
     case "up":
       return SPRITES.henryUp;
+
     case "left":
       return SPRITES.henryLeft;
+
     case "right":
       return SPRITES.henryRight;
+
     case "down":
     default:
       return SPRITES.henryDown;
@@ -521,6 +579,7 @@ function getHenrySprite() {
 
 function getMikeMapBoundaries() {
   const mikeSprite = getMikeSprite();
+
   const spriteSize = getSpritePixelSize(
     mikeSprite,
     CHARACTER_CELL_SCALE
@@ -541,7 +600,8 @@ function updateMike(deltaSeconds) {
   const mike = gameState.mike;
 
   mike.moving =
-    Math.abs(movement.x) > 0.01 || Math.abs(movement.y) > 0.01;
+    Math.abs(movement.x) > 0.01 ||
+    Math.abs(movement.y) > 0.01;
 
   if (!mike.moving) {
     return;
@@ -610,6 +670,74 @@ function findDelayedMikePosition(currentTime) {
   return delayedPosition;
 }
 
+/*
+  Update Henry's facing direction without diagonal flicker.
+
+  Switching axes requires the new axis to be clearly stronger than the
+  current one. Near a diagonal, Henry keeps the axis he already has.
+
+  This is a small form of hysteresis: the threshold for switching is
+  intentionally stronger than the threshold for staying.
+*/
+function updateHenryDirection(
+  differenceX,
+  differenceY,
+  delayedDirection
+) {
+  const henry = gameState.henry;
+
+  const absoluteX = Math.abs(differenceX);
+  const absoluteY = Math.abs(differenceY);
+
+  const minimumMovement = 0.01;
+  const switchRatio = 1.25;
+
+  if (
+    absoluteX < minimumMovement &&
+    absoluteY < minimumMovement
+  ) {
+    henry.direction = delayedDirection;
+
+    henry.facingAxis =
+      delayedDirection === "left" ||
+      delayedDirection === "right"
+        ? "horizontal"
+        : "vertical";
+
+    return;
+  }
+
+  if (henry.facingAxis === "horizontal") {
+    /*
+      Stay horizontal unless vertical movement is clearly stronger.
+    */
+    if (absoluteY > absoluteX * switchRatio) {
+      henry.facingAxis = "vertical";
+    }
+  } else {
+    /*
+      Stay vertical unless horizontal movement is clearly stronger.
+    */
+    if (absoluteX > absoluteY * switchRatio) {
+      henry.facingAxis = "horizontal";
+    }
+  }
+
+  if (henry.facingAxis === "horizontal") {
+    if (absoluteX >= minimumMovement) {
+      henry.direction =
+        differenceX < 0 ? "left" : "right";
+    } else {
+      henry.direction = delayedDirection;
+    }
+  } else if (absoluteY >= minimumMovement) {
+    henry.direction =
+      differenceY < 0 ? "up" : "down";
+  } else {
+    henry.direction = delayedDirection;
+  }
+}
+
 function updateHenry(currentTime, deltaSeconds) {
   const delayedPosition = findDelayedMikePosition(currentTime);
 
@@ -618,6 +746,7 @@ function updateHenry(currentTime, deltaSeconds) {
   }
 
   const henry = gameState.henry;
+
   const differenceX = delayedPosition.x - henry.x;
   const differenceY = delayedPosition.y - henry.y;
   const distance = Math.hypot(differenceX, differenceY);
@@ -626,6 +755,13 @@ function updateHenry(currentTime, deltaSeconds) {
     henry.x = delayedPosition.x;
     henry.y = delayedPosition.y;
     henry.direction = delayedPosition.direction;
+
+    henry.facingAxis =
+      delayedPosition.direction === "left" ||
+      delayedPosition.direction === "right"
+        ? "horizontal"
+        : "vertical";
+
     return;
   }
 
@@ -636,11 +772,11 @@ function updateHenry(currentTime, deltaSeconds) {
   henry.x += (differenceX / distance) * step;
   henry.y += (differenceY / distance) * step;
 
-  if (Math.abs(differenceX) > Math.abs(differenceY)) {
-    henry.direction = differenceX < 0 ? "left" : "right";
-  } else if (Math.abs(differenceY) > 0.01) {
-    henry.direction = differenceY < 0 ? "up" : "down";
-  }
+  updateHenryDirection(
+    differenceX,
+    differenceY,
+    delayedPosition.direction
+  );
 }
 
 /* ------------------------------------------------------------------ */
