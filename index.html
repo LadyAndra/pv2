@@ -24,11 +24,11 @@
   <main class="game-shell">
     <header class="game-header">
       <p class="eyebrow">Prairie Village</p>
-      <h1>Birthday Build — Phase 2.1</h1>
+      <h1>Birthday Build — Phase 2.2</h1>
 
       <p class="instructions">
-        Use Arrow keys or WASD on a computer. On a phone, move with the
-        left joystick and use the action button on the right.
+        Use Arrow keys or WASD on a computer. On a phone, drag anywhere
+        on the left half to move and tap anywhere on the right half to act.
       </p>
     </header>
 
@@ -50,12 +50,12 @@
         </canvas>
 
         <!--
-          Mobile controls sit over the lower portion of the game.
+          Invisible mobile controls cover the game stage.
 
-          The left half accepts joystick movement.
-          The right half contains the action button.
+          The left half becomes a floating joystick wherever the player
+          first places a thumb.
 
-          CSS hides this layer on devices that use a precise mouse.
+          The right half acts as one large invisible action button.
         -->
         <div
           id="touch-controls"
@@ -65,24 +65,16 @@
           <div
             id="joystick-zone"
             class="control-zone joystick-zone"
-            aria-label="Movement joystick area"
-          >
-            <div id="joystick-base" class="joystick-base" aria-hidden="true">
-              <div id="joystick-knob" class="joystick-knob"></div>
-            </div>
-          </div>
+            aria-label="Movement area"
+          ></div>
 
-          <div class="control-zone action-zone">
-            <button
-              id="action-button"
-              class="action-button"
-              type="button"
-              aria-label="Action"
-            >
-              <span class="action-button-label">A</span>
-              <span class="action-button-caption">Action</span>
-            </button>
-          </div>
+          <div
+            id="action-zone"
+            class="control-zone action-zone"
+            role="button"
+            aria-label="Action"
+            aria-pressed="false"
+          ></div>
         </div>
       </div>
     </section>
