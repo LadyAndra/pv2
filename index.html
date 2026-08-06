@@ -12,16 +12,13 @@
 
   <!--
     Version numbers help prevent the browser from loading old cached files.
-    Increase this number whenever you replace the CSS or JavaScript.
   -->
-  <link rel="stylesheet" href="./styles.css?v=25">
+  <link rel="stylesheet" href="./styles.css?v=26">
 </head>
 
 <body>
   <!--
     This message appears on phones and small touch devices held vertically.
-
-    The game itself is hidden until the device is turned sideways.
   -->
   <div class="orientation-gate" aria-live="polite">
     <div class="orientation-card">
@@ -29,7 +26,9 @@
         ↻
       </div>
 
-      <p class="orientation-eyebrow">Prairie Village</p>
+      <p class="orientation-eyebrow">
+        Prairie Village
+      </p>
 
       <h1>Turn your phone sideways</h1>
 
@@ -41,9 +40,13 @@
 
   <main class="game-shell">
     <header class="game-header">
-      <p class="eyebrow">Prairie Village</p>
+      <p class="eyebrow">
+        Prairie Village
+      </p>
 
-      <h1>Birthday Build — Phase 2.5</h1>
+      <h1>
+        Birthday Build — Phase 2.6
+      </h1>
 
       <p class="instructions">
         Use Arrow keys or WASD on a computer. On a phone, hold the device
@@ -52,7 +55,10 @@
       </p>
     </header>
 
-    <section class="canvas-frame" aria-label="Prairie Village game">
+    <section
+      class="canvas-frame"
+      aria-label="Prairie Village game"
+    >
       <div class="game-stage">
         <canvas
           id="game-canvas"
@@ -75,11 +81,8 @@
   <!--
     Full-screen invisible mobile controls.
 
-    These controls are outside the game-stage so they can cover the entire
-    phone screen, including any space beside the 4:3 game map.
-
     Left 60%:
-    Floating movement joystick.
+    Eight-direction movement control.
 
     Right 40%:
     Action control.
@@ -104,10 +107,7 @@
     ></div>
   </div>
 
-  <!--
-    Version numbers force the browser to request the current JavaScript.
-  -->
-  <script src="./sprites.js?v=25"></script>
-  <script src="./game.js?v=25"></script>
+  <script src="./sprites.js?v=26"></script>
+  <script src="./game.js?v=26"></script>
 </body>
 </html>
