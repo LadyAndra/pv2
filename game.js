@@ -11,7 +11,7 @@
   3. Map rendering
   4. Keyboard input
   5. Mike movement
-  6. Map-boundary collision
+  6. Full-sprite map-boundary collision
   7. Henry's delayed following
   8. The animation loop
 
@@ -66,8 +66,6 @@ const TILE_SIZE = 16;
 
 /*
   Character letter-grid cells are drawn at 2 × 2 world pixels.
-
-  Mike's 7-cell-wide grid therefore appears 14 pixels wide.
 */
 const CHARACTER_CELL_SCALE = 2;
 
@@ -88,12 +86,6 @@ const WORLD_HEIGHT = canvas.height;
 /* Game state                                                          */
 /* ------------------------------------------------------------------ */
 
-/*
-  All changing game values live together here.
-
-  This makes it easier to see what the game remembers from one frame
-  to the next.
-*/
 const gameState = {
   previousFrameTime: 0,
 
@@ -102,15 +94,7 @@ const gameState = {
     y: 128,
     speed: 72,
     direction: "down",
-    moving: false,
-
-    /*
-      Mike's collision is deliberately smaller than his full sprite.
-
-      x and y represent the point where his feet touch the ground.
-    */
-    collisionHalfWidth: 5,
-    collisionHeight: 8
+    moving: false
   },
 
   henry: {
@@ -123,12 +107,13 @@ const gameState = {
     Henry follows old Mike positions rather than moving directly toward
     Mike's current position.
 
-    This creates a short, natural-looking delay.
+    This creates a short positional delay.
   */
   mikePositionHistory: [],
 
   /*
-    Henry uses a position roughly this many milliseconds behind Mike.
+    Henry follows a position approximately this many milliseconds behind
+    Mike's current position.
   */
   henryDelayMilliseconds: 280
 };
@@ -137,9 +122,6 @@ const gameState = {
 /* Keyboard input                                                      */
 /* ------------------------------------------------------------------ */
 
-/*
-  This object records which movement directions are currently held.
-*/
 const input = {
   up: false,
   down: false,
@@ -148,7 +130,7 @@ const input = {
 };
 
 /*
-  Converts keyboard keys into the game's four movement directions.
+  Convert keyboard keys into the game's four movement directions.
 */
 function setKeyState(key, isPressed) {
   const normalizedKey = key.toLowerCase();
@@ -171,8 +153,7 @@ function setKeyState(key, isPressed) {
 }
 
 /*
-  Prevent the browser from scrolling the page when game movement keys
-  are pressed.
+  Return true when a key is used for movement.
 */
 function isMovementKey(key) {
   return [
@@ -204,8 +185,8 @@ window.addEventListener("keyup", (event) => {
 /*
   Clear held keys if the browser window loses focus.
 
-  Without this, a movement key can sometimes appear stuck after the
-  player switches tabs while holding it.
+  This prevents movement keys from appearing stuck after the player
+  changes tabs while holding a key.
 */
 window.addEventListener("blur", () => {
   input.up = false;
@@ -215,19 +196,44 @@ window.addEventListener("blur", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* Letter-grid sprite measurements                                     */
+/* ------------------------------------------------------------------ */
+
+/*
+  Calculate the rendered width and height of a letter-grid sprite.
+
+  For example:
+
+  A sprite that is 7 cells wide and uses a cell scale of 2 will render
+  14 canvas pixels wide.
+*/
+function getSpritePixelSize(sprite, cellScale) {
+  const gridHeight = sprite.grid.length;
+
+  /*
+    Letter-grid sprites are rectangular, so every row should have the
+    same width. The first row supplies that width.
+  */
+  const gridWidth = sprite.grid[0].length;
+
+  return {
+    width: gridWidth * cellScale,
+    height: gridHeight * cellScale
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /* Letter-grid sprite rendering                                        */
 /* ------------------------------------------------------------------ */
 
 /*
   Draw one letter-grid sprite.
 
-  Parameters:
-
   sprite:
     The sprite object from sprites.js.
 
   worldX and worldY:
-    The position in canvas/world pixels.
+    The sprite's anchor position in canvas pixels.
 
   cellScale:
     The number of canvas pixels used for one letter-grid cell.
@@ -236,35 +242,36 @@ function drawLetterGridSprite(sprite, worldX, worldY, cellScale) {
   const grid = sprite.grid;
   const palette = sprite.palette;
 
-  const gridWidth = grid[0].length;
-  const gridHeight = grid.length;
-
-  const spriteWidth = gridWidth * cellScale;
-  const spriteHeight = gridHeight * cellScale;
+  const spriteSize = getSpritePixelSize(sprite, cellScale);
 
   let drawX = worldX;
   let drawY = worldY;
 
   /*
-    World characters stand on a bottom-center anchor.
+    Characters use a bottom-center anchor.
 
-    Terrain tiles begin at a top-left anchor.
+    Their world position represents the point where their feet touch
+    the ground.
   */
   if (sprite.anchor === "bottom-center") {
-    drawX = Math.round(worldX - spriteWidth / 2);
-    drawY = Math.round(worldY - spriteHeight);
+    drawX = Math.round(worldX - spriteSize.width / 2);
+    drawY = Math.round(worldY - spriteSize.height);
   } else {
+    /*
+      Terrain tiles use a top-left anchor.
+    */
     drawX = Math.round(worldX);
     drawY = Math.round(worldY);
   }
 
-  /*
-    Read every row and every cell in the letter grid.
-  */
-  for (let rowIndex = 0; rowIndex < gridHeight; rowIndex += 1) {
+  for (let rowIndex = 0; rowIndex < grid.length; rowIndex += 1) {
     const row = grid[rowIndex];
 
-    for (let columnIndex = 0; columnIndex < gridWidth; columnIndex += 1) {
+    for (
+      let columnIndex = 0;
+      columnIndex < row.length;
+      columnIndex += 1
+    ) {
       const letter = row[columnIndex];
 
       /*
@@ -277,13 +284,13 @@ function drawLetterGridSprite(sprite, worldX, worldY, cellScale) {
       const color = palette[letter];
 
       /*
-        Throw a clear error if a sprite uses an undefined palette letter.
-        This makes sprite mistakes easier to diagnose.
+        Warn clearly if a sprite uses a palette role that does not exist.
       */
       if (!color) {
         console.warn(
           `Sprite "${sprite.id}" uses undefined palette role "${letter}".`
         );
+
         continue;
       }
 
@@ -303,12 +310,6 @@ function drawLetterGridSprite(sprite, worldX, worldY, cellScale) {
 /* Map rendering                                                       */
 /* ------------------------------------------------------------------ */
 
-/*
-  Draw every tile in MAP_DATA.
-
-  The map itself is data.
-  This function only decides where each tile should be drawn.
-*/
 function drawMap() {
   for (let rowIndex = 0; rowIndex < MAP_DATA.length; rowIndex += 1) {
     const mapRow = MAP_DATA[rowIndex];
@@ -321,9 +322,6 @@ function drawMap() {
       const tileCode = mapRow[columnIndex];
       const tileSprite = TILE_TYPES[tileCode];
 
-      /*
-        Skip unknown tile codes instead of crashing the whole game.
-      */
       if (!tileSprite) {
         console.warn(`Unknown map tile code: "${tileCode}"`);
         continue;
@@ -350,6 +348,7 @@ function drawMap() {
   Keep a number inside a minimum and maximum value.
 
   Example:
+
   clamp(12, 0, 10) returns 10.
 */
 function clamp(value, minimum, maximum) {
@@ -358,14 +357,6 @@ function clamp(value, minimum, maximum) {
 
 /*
   Read the currently held movement keys and return a direction vector.
-
-  x:
-    -1 means left
-     1 means right
-
-  y:
-    -1 means up
-     1 means down
 */
 function getMovementVector() {
   let x = 0;
@@ -388,10 +379,7 @@ function getMovementVector() {
   }
 
   /*
-    Normalize diagonal movement.
-
-    Without this, moving diagonally would be faster than moving in a
-    single direction.
+    Normalize diagonal movement so moving diagonally is not faster.
   */
   if (x !== 0 && y !== 0) {
     const diagonalScale = 1 / Math.sqrt(2);
@@ -406,8 +394,7 @@ function getMovementVector() {
 /*
   Update Mike's facing direction.
 
-  When moving diagonally, horizontal movement is given visual priority.
-  This keeps the four-direction system simple.
+  When moving diagonally, horizontal movement receives visual priority.
 */
 function updateMikeDirection(movement) {
   if (movement.x < 0) {
@@ -421,10 +408,94 @@ function updateMikeDirection(movement) {
   }
 }
 
-/*
-  Move Mike and keep his collision area inside the map.
+/* ------------------------------------------------------------------ */
+/* Directional sprite selection                                        */
+/* ------------------------------------------------------------------ */
 
-  Mike's x and y mark the location of his feet.
+function getMikeSprite() {
+  switch (gameState.mike.direction) {
+    case "up":
+      return SPRITES.mikeUp;
+
+    case "left":
+      return SPRITES.mikeLeft;
+
+    case "right":
+      return SPRITES.mikeRight;
+
+    case "down":
+    default:
+      return SPRITES.mikeDown;
+  }
+}
+
+function getHenrySprite() {
+  switch (gameState.henry.direction) {
+    case "up":
+      return SPRITES.henryUp;
+
+    case "left":
+      return SPRITES.henryLeft;
+
+    case "right":
+      return SPRITES.henryRight;
+
+    case "down":
+    default:
+      return SPRITES.henryDown;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Full-sprite map-boundary collision                                  */
+/* ------------------------------------------------------------------ */
+
+/*
+  Calculate the legal range for Mike's bottom-center anchor.
+
+  This is the important boundary correction.
+
+  Previously, the top boundary only considered a small collision body.
+  Mike's feet remained inside the map, but his head could leave it.
+
+  Now the outside map boundaries consider the entire rendered sprite:
+
+  - The top boundary reserves the full sprite height.
+  - The left boundary reserves half the sprite width.
+  - The right boundary reserves half the sprite width.
+  - The bottom boundary keeps Mike's feet inside the final canvas row.
+*/
+function getMikeMapBoundaries() {
+  const mikeSprite = getMikeSprite();
+
+  const spriteSize = getSpritePixelSize(
+    mikeSprite,
+    CHARACTER_CELL_SCALE
+  );
+
+  const halfSpriteWidth = spriteSize.width / 2;
+
+  return {
+    minimumX: halfSpriteWidth,
+    maximumX: WORLD_WIDTH - halfSpriteWidth,
+
+    /*
+      Mike's y-coordinate represents his feet.
+
+      Therefore, his feet must remain at least one full sprite height
+      below the top of the canvas.
+    */
+    minimumY: spriteSize.height,
+
+    /*
+      The feet may reach the final visible canvas row.
+    */
+    maximumY: WORLD_HEIGHT - 1
+  };
+}
+
+/*
+  Move Mike and keep his entire rendered sprite inside the map.
 */
 function updateMike(deltaSeconds) {
   const movement = getMovementVector();
@@ -436,6 +507,11 @@ function updateMike(deltaSeconds) {
     return;
   }
 
+  /*
+    Update direction before calculating boundaries because left-facing
+    and right-facing sprites could eventually have different dimensions
+    from front-facing sprites.
+  */
   updateMikeDirection(movement);
 
   const proposedX =
@@ -444,26 +520,19 @@ function updateMike(deltaSeconds) {
   const proposedY =
     mike.y + movement.y * mike.speed * deltaSeconds;
 
-  /*
-    Horizontal map boundaries.
+  const boundaries = getMikeMapBoundaries();
 
-    Mike's center cannot move so far left or right that his small
-    collision width leaves the canvas.
-  */
-  const minimumX = mike.collisionHalfWidth;
-  const maximumX = WORLD_WIDTH - mike.collisionHalfWidth;
+  mike.x = clamp(
+    proposedX,
+    boundaries.minimumX,
+    boundaries.maximumX
+  );
 
-  /*
-    Vertical map boundaries.
-
-    His feet may reach the bottom edge.
-    His collision body must remain above the top edge.
-  */
-  const minimumY = mike.collisionHeight;
-  const maximumY = WORLD_HEIGHT - 1;
-
-  mike.x = clamp(proposedX, minimumX, maximumX);
-  mike.y = clamp(proposedY, minimumY, maximumY);
+  mike.y = clamp(
+    proposedY,
+    boundaries.minimumY,
+    boundaries.maximumY
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -472,9 +541,6 @@ function updateMike(deltaSeconds) {
 
 /*
   Save Mike's recent positions.
-
-  Each record includes a timestamp so Henry can choose a position from
-  a specific amount of time in the past.
 */
 function recordMikePosition(currentTime) {
   gameState.mikePositionHistory.push({
@@ -485,9 +551,7 @@ function recordMikePosition(currentTime) {
   });
 
   /*
-    We only need a short history.
-
-    Removing older records prevents this array from growing forever.
+    Remove history records that are too old to be useful.
   */
   const oldestUsefulTime =
     currentTime - gameState.henryDelayMilliseconds - 1000;
@@ -501,8 +565,7 @@ function recordMikePosition(currentTime) {
 }
 
 /*
-  Select the newest recorded Mike position that is old enough for Henry
-  to follow.
+  Select the newest Mike position that is old enough for Henry to follow.
 */
 function findDelayedMikePosition(currentTime) {
   const targetTime =
@@ -523,9 +586,6 @@ function findDelayedMikePosition(currentTime) {
 
 /*
   Henry moves toward Mike's delayed position.
-
-  This produces a trailing companion rather than a character glued
-  directly to Mike.
 */
 function updateHenry(currentTime, deltaSeconds) {
   const delayedPosition = findDelayedMikePosition(currentTime);
@@ -541,10 +601,6 @@ function updateHenry(currentTime, deltaSeconds) {
 
   const distance = Math.hypot(differenceX, differenceY);
 
-  /*
-    Henry does not need to move if he is already extremely close to the
-    delayed position.
-  */
   if (distance < 0.5) {
     henry.x = delayedPosition.x;
     henry.y = delayedPosition.y;
@@ -554,21 +610,17 @@ function updateHenry(currentTime, deltaSeconds) {
 
   /*
     Henry moves slightly faster than Mike so he can recover naturally
-    if the frame rate briefly slows down.
+    after a temporary frame-rate slowdown.
   */
   const henrySpeed = 86;
   const maximumStep = henrySpeed * deltaSeconds;
-
-  /*
-    Never move farther than the remaining distance.
-  */
   const step = Math.min(maximumStep, distance);
 
   henry.x += (differenceX / distance) * step;
   henry.y += (differenceY / distance) * step;
 
   /*
-    Use the strongest movement axis to determine Henry's facing.
+    Use the strongest movement axis to choose Henry's facing direction.
   */
   if (Math.abs(differenceX) > Math.abs(differenceY)) {
     henry.direction = differenceX < 0 ? "left" : "right";
@@ -578,60 +630,13 @@ function updateHenry(currentTime, deltaSeconds) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Sprite selection                                                    */
-/* ------------------------------------------------------------------ */
-
-/*
-  Return Mike's current directional PLACEHOLDER sprite.
-*/
-function getMikeSprite() {
-  switch (gameState.mike.direction) {
-    case "up":
-      return SPRITES.mikeUp;
-
-    case "left":
-      return SPRITES.mikeLeft;
-
-    case "right":
-      return SPRITES.mikeRight;
-
-    case "down":
-    default:
-      return SPRITES.mikeDown;
-  }
-}
-
-/*
-  Return Henry's current directional PLACEHOLDER sprite.
-*/
-function getHenrySprite() {
-  switch (gameState.henry.direction) {
-    case "up":
-      return SPRITES.henryUp;
-
-    case "left":
-      return SPRITES.henryLeft;
-
-    case "right":
-      return SPRITES.henryRight;
-
-    case "down":
-    default:
-      return SPRITES.henryDown;
-  }
-}
-
-/* ------------------------------------------------------------------ */
 /* Scene rendering                                                     */
 /* ------------------------------------------------------------------ */
 
 /*
-  Draw Henry and Mike in vertical order.
+  Draw the character farther up the map first.
 
-  The character farther up the map is drawn first.
-  The character farther down is drawn afterward.
-
-  This simple form of depth sorting helps the lower character appear
+  The character farther down is drawn afterward and therefore appears
   visually in front.
 */
 function drawCharacters() {
@@ -666,9 +671,6 @@ function drawCharacters() {
   Draw one complete frame.
 */
 function renderGame() {
-  /*
-    Clear the previous frame.
-  */
   context.clearRect(0, 0, canvas.width, canvas.height);
 
   /*
@@ -684,31 +686,19 @@ function renderGame() {
 /* Main game loop                                                      */
 /* ------------------------------------------------------------------ */
 
-/*
-  requestAnimationFrame asks the browser to call this function before
-  the next screen repaint.
-*/
 function gameLoop(currentTime) {
   /*
-    The first frame has no earlier timestamp.
-
-    A safe default avoids a huge movement jump when the game begins.
+    The first frame has no previous timestamp.
   */
   if (gameState.previousFrameTime === 0) {
     gameState.previousFrameTime = currentTime;
   }
 
-  /*
-    Convert elapsed time from milliseconds to seconds.
-  */
   let deltaSeconds =
     (currentTime - gameState.previousFrameTime) / 1000;
 
   /*
-    Limit unusually large frame gaps.
-
-    This prevents Mike and Henry from jumping across the screen after
-    the browser tab has been inactive.
+    Prevent large movement jumps after the browser tab has been inactive.
   */
   deltaSeconds = Math.min(deltaSeconds, 0.05);
 
