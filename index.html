@@ -4,12 +4,12 @@
   <meta charset="UTF-8">
 
   <!--
-    Makes the page fit correctly on phones and tablets.
-    This does not add mobile controls yet.
+    viewport-fit=cover allows the layout to respect phone safe areas
+    while still using the full available screen.
   -->
   <meta
     name="viewport"
-    content="width=device-width, initial-scale=1.0"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
   >
 
   <title>Prairie Village</title>
@@ -24,28 +24,67 @@
   <main class="game-shell">
     <header class="game-header">
       <p class="eyebrow">Prairie Village</p>
-      <h1>Birthday Build — Phase 2</h1>
+      <h1>Birthday Build — Phase 2.1</h1>
 
       <p class="instructions">
-        Move Mike with the Arrow keys or WASD.
+        Use Arrow keys or WASD on a computer. On a phone, move with the
+        left joystick and use the action button on the right.
       </p>
     </header>
 
     <section class="canvas-frame" aria-label="Prairie Village game">
-      <!--
-        The canvas has a fixed internal resolution.
+      <div class="game-stage">
+        <!--
+          The canvas has a fixed internal resolution.
 
-        CSS may make it appear larger or smaller, but the game itself
-        always draws into this same internal pixel grid.
-      -->
-      <canvas
-        id="game-canvas"
-        width="320"
-        height="240"
-        aria-label="A small top-down Prairie Village map"
-      >
-        Your browser does not support the HTML canvas element.
-      </canvas>
+          CSS may make it appear larger or smaller, but the game itself
+          always draws into this same internal pixel grid.
+        -->
+        <canvas
+          id="game-canvas"
+          width="320"
+          height="240"
+          aria-label="A small top-down Prairie Village map"
+        >
+          Your browser does not support the HTML canvas element.
+        </canvas>
+
+        <!--
+          Mobile controls sit over the lower portion of the game.
+
+          The left half accepts joystick movement.
+          The right half contains the action button.
+
+          CSS hides this layer on devices that use a precise mouse.
+        -->
+        <div
+          id="touch-controls"
+          class="touch-controls"
+          aria-label="Mobile game controls"
+        >
+          <div
+            id="joystick-zone"
+            class="control-zone joystick-zone"
+            aria-label="Movement joystick area"
+          >
+            <div id="joystick-base" class="joystick-base" aria-hidden="true">
+              <div id="joystick-knob" class="joystick-knob"></div>
+            </div>
+          </div>
+
+          <div class="control-zone action-zone">
+            <button
+              id="action-button"
+              class="action-button"
+              type="button"
+              aria-label="Action"
+            >
+              <span class="action-button-label">A</span>
+              <span class="action-button-caption">Action</span>
+            </button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <footer class="game-footer">

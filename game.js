@@ -2,7 +2,7 @@
 
 /*
   Prairie Village
-  Phase 2 — Smallest Runnable Vertical Slice
+  Phase 2.1 — Mobile Split Controls
 
   This file contains:
 
@@ -10,12 +10,14 @@
   2. Letter-grid sprite rendering
   3. Map rendering
   4. Keyboard input
-  5. Mike movement
-  6. Full-sprite map-boundary collision
-  7. Henry's delayed following
-  8. The animation loop
+  5. Left-thumb analog joystick input
+  6. Right-thumb action button input
+  7. Mike movement
+  8. Full-sprite map-boundary collision
+  9. Henry's delayed following
+  10. The animation loop
 
-  It intentionally does not contain:
+  It intentionally does not yet contain:
 
   - houses
   - trees
@@ -24,33 +26,24 @@
   - crafting
   - saving
   - audio
-  - mobile controls
   - PWA registration
 */
 
 /* ------------------------------------------------------------------ */
-/* Canvas setup                                                        */
+/* Canvas and control setup                                            */
 /* ------------------------------------------------------------------ */
 
 const canvas = document.getElementById("game-canvas");
 const context = canvas.getContext("2d");
 
-/*
-  Stop the browser from smoothing enlarged pixels.
+const joystickZone = document.getElementById("joystick-zone");
+const joystickBase = document.getElementById("joystick-base");
+const joystickKnob = document.getElementById("joystick-knob");
+const actionButton = document.getElementById("action-button");
 
-  This is essential for crisp letter-grid rendering.
-*/
 context.imageSmoothingEnabled = false;
-
-/*
-  The canvas itself should be keyboard-focusable.
-*/
 canvas.tabIndex = 0;
 
-/*
-  Give the canvas focus after the page loads so the movement keys work
-  immediately in most desktop browsers.
-*/
 window.addEventListener("load", () => {
   canvas.focus();
 });
@@ -59,26 +52,9 @@ window.addEventListener("load", () => {
 /* World measurements                                                  */
 /* ------------------------------------------------------------------ */
 
-/*
-  Each map tile occupies 16 × 16 world pixels.
-*/
 const TILE_SIZE = 16;
-
-/*
-  Character letter-grid cells are drawn at 2 × 2 world pixels.
-*/
 const CHARACTER_CELL_SCALE = 2;
-
-/*
-  Terrain grids are 8 × 8 cells.
-
-  A scale of 2 makes each terrain sprite exactly 16 × 16 world pixels.
-*/
 const TERRAIN_CELL_SCALE = 2;
-
-/*
-  These values describe the playable map edges.
-*/
 const WORLD_WIDTH = canvas.width;
 const WORLD_HEIGHT = canvas.height;
 
@@ -103,35 +79,38 @@ const gameState = {
     direction: "right"
   },
 
-  /*
-    Henry follows old Mike positions rather than moving directly toward
-    Mike's current position.
-
-    This creates a short positional delay.
-  */
   mikePositionHistory: [],
-
-  /*
-    Henry follows a position approximately this many milliseconds behind
-    Mike's current position.
-  */
   henryDelayMilliseconds: 280
 };
 
 /* ------------------------------------------------------------------ */
-/* Keyboard input                                                      */
+/* Shared input state                                                  */
 /* ------------------------------------------------------------------ */
 
 const input = {
   up: false,
   down: false,
   left: false,
-  right: false
+  right: false,
+
+  /*
+    Analog joystick values range from -1 to 1.
+  */
+  joystickX: 0,
+  joystickY: 0,
+
+  /*
+    The action input is ready for the next gameplay feature.
+    It currently changes button state but does not trigger an in-game
+    interaction because no interaction system exists yet.
+  */
+  action: false
 };
 
-/*
-  Convert keyboard keys into the game's four movement directions.
-*/
+/* ------------------------------------------------------------------ */
+/* Keyboard input                                                      */
+/* ------------------------------------------------------------------ */
+
 function setKeyState(key, isPressed) {
   const normalizedKey = key.toLowerCase();
 
@@ -152,9 +131,6 @@ function setKeyState(key, isPressed) {
   }
 }
 
-/*
-  Return true when a key is used for movement.
-*/
 function isMovementKey(key) {
   return [
     "arrowup",
@@ -173,6 +149,11 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     setKeyState(event.key, true);
   }
+
+  if (event.key === " " || event.key === "Enter") {
+    event.preventDefault();
+    setActionState(true);
+  }
 });
 
 window.addEventListener("keyup", (event) => {
@@ -180,40 +161,184 @@ window.addEventListener("keyup", (event) => {
     event.preventDefault();
     setKeyState(event.key, false);
   }
+
+  if (event.key === " " || event.key === "Enter") {
+    event.preventDefault();
+    setActionState(false);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Mobile analog joystick                                              */
+/* ------------------------------------------------------------------ */
+
+const joystickState = {
+  activePointerId: null,
+  maximumRadius: 0
+};
+
+/*
+  Keep a number inside a minimum and maximum value.
+*/
+function clamp(value, minimum, maximum) {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
+/*
+  Reset the joystick to its resting position.
+*/
+function resetJoystick() {
+  joystickState.activePointerId = null;
+  input.joystickX = 0;
+  input.joystickY = 0;
+
+  joystickBase.classList.remove("is-active");
+  joystickKnob.style.transform = "translate(-50%, -50%)";
+}
+
+/*
+  Convert a pointer position into normalized joystick input.
+
+  The base is fixed visually in the lower-left corner. The player may
+  touch anywhere in the left half; movement is calculated relative to
+  the visible base center so the control feels consistent.
+*/
+function updateJoystickFromPointer(event) {
+  const baseRectangle = joystickBase.getBoundingClientRect();
+
+  const centerX = baseRectangle.left + baseRectangle.width / 2;
+  const centerY = baseRectangle.top + baseRectangle.height / 2;
+
+  const differenceX = event.clientX - centerX;
+  const differenceY = event.clientY - centerY;
+
+  const distance = Math.hypot(differenceX, differenceY);
+  const maximumRadius = baseRectangle.width * 0.34;
+  const deadZone = maximumRadius * 0.15;
+
+  joystickState.maximumRadius = maximumRadius;
+
+  if (distance <= deadZone) {
+    input.joystickX = 0;
+    input.joystickY = 0;
+    joystickKnob.style.transform = "translate(-50%, -50%)";
+    return;
+  }
+
+  const limitedDistance = Math.min(distance, maximumRadius);
+  const directionX = differenceX / distance;
+  const directionY = differenceY / distance;
+
+  const knobX = directionX * limitedDistance;
+  const knobY = directionY * limitedDistance;
+
+  input.joystickX = clamp(differenceX / maximumRadius, -1, 1);
+  input.joystickY = clamp(differenceY / maximumRadius, -1, 1);
+
+  joystickKnob.style.transform =
+    `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
+}
+
+joystickZone.addEventListener("pointerdown", (event) => {
+  if (joystickState.activePointerId !== null) {
+    return;
+  }
+
+  event.preventDefault();
+
+  joystickState.activePointerId = event.pointerId;
+  joystickZone.setPointerCapture(event.pointerId);
+  joystickBase.classList.add("is-active");
+
+  updateJoystickFromPointer(event);
+});
+
+joystickZone.addEventListener("pointermove", (event) => {
+  if (event.pointerId !== joystickState.activePointerId) {
+    return;
+  }
+
+  event.preventDefault();
+  updateJoystickFromPointer(event);
+});
+
+function finishJoystickPointer(event) {
+  if (event.pointerId !== joystickState.activePointerId) {
+    return;
+  }
+
+  event.preventDefault();
+
+  if (joystickZone.hasPointerCapture(event.pointerId)) {
+    joystickZone.releasePointerCapture(event.pointerId);
+  }
+
+  resetJoystick();
+}
+
+joystickZone.addEventListener("pointerup", finishJoystickPointer);
+joystickZone.addEventListener("pointercancel", finishJoystickPointer);
+joystickZone.addEventListener("lostpointercapture", resetJoystick);
+
+/* ------------------------------------------------------------------ */
+/* Mobile action button                                                */
+/* ------------------------------------------------------------------ */
+
+function setActionState(isPressed) {
+  input.action = isPressed;
+  actionButton.classList.toggle("is-pressed", isPressed);
+  actionButton.setAttribute("aria-pressed", String(isPressed));
+}
+
+function pressActionButton(event) {
+  event.preventDefault();
+  actionButton.setPointerCapture(event.pointerId);
+  setActionState(true);
+}
+
+function releaseActionButton(event) {
+  event.preventDefault();
+
+  if (actionButton.hasPointerCapture(event.pointerId)) {
+    actionButton.releasePointerCapture(event.pointerId);
+  }
+
+  setActionState(false);
+}
+
+actionButton.addEventListener("pointerdown", pressActionButton);
+actionButton.addEventListener("pointerup", releaseActionButton);
+actionButton.addEventListener("pointercancel", releaseActionButton);
+actionButton.addEventListener("lostpointercapture", () => {
+  setActionState(false);
 });
 
 /*
-  Clear held keys if the browser window loses focus.
+  Prevent the button's synthetic click from scrolling or shifting focus
+  after a touch interaction.
+*/
+actionButton.addEventListener("click", (event) => {
+  event.preventDefault();
+});
 
-  This prevents movement keys from appearing stuck after the player
-  changes tabs while holding a key.
+/*
+  Clear every held input if the browser loses focus.
 */
 window.addEventListener("blur", () => {
   input.up = false;
   input.down = false;
   input.left = false;
   input.right = false;
+  setActionState(false);
+  resetJoystick();
 });
 
 /* ------------------------------------------------------------------ */
 /* Letter-grid sprite measurements                                     */
 /* ------------------------------------------------------------------ */
 
-/*
-  Calculate the rendered width and height of a letter-grid sprite.
-
-  For example:
-
-  A sprite that is 7 cells wide and uses a cell scale of 2 will render
-  14 canvas pixels wide.
-*/
 function getSpritePixelSize(sprite, cellScale) {
   const gridHeight = sprite.grid.length;
-
-  /*
-    Letter-grid sprites are rectangular, so every row should have the
-    same width. The first row supplies that width.
-  */
   const gridWidth = sprite.grid[0].length;
 
   return {
@@ -226,40 +351,18 @@ function getSpritePixelSize(sprite, cellScale) {
 /* Letter-grid sprite rendering                                        */
 /* ------------------------------------------------------------------ */
 
-/*
-  Draw one letter-grid sprite.
-
-  sprite:
-    The sprite object from sprites.js.
-
-  worldX and worldY:
-    The sprite's anchor position in canvas pixels.
-
-  cellScale:
-    The number of canvas pixels used for one letter-grid cell.
-*/
 function drawLetterGridSprite(sprite, worldX, worldY, cellScale) {
   const grid = sprite.grid;
   const palette = sprite.palette;
-
   const spriteSize = getSpritePixelSize(sprite, cellScale);
 
   let drawX = worldX;
   let drawY = worldY;
 
-  /*
-    Characters use a bottom-center anchor.
-
-    Their world position represents the point where their feet touch
-    the ground.
-  */
   if (sprite.anchor === "bottom-center") {
     drawX = Math.round(worldX - spriteSize.width / 2);
     drawY = Math.round(worldY - spriteSize.height);
   } else {
-    /*
-      Terrain tiles use a top-left anchor.
-    */
     drawX = Math.round(worldX);
     drawY = Math.round(worldY);
   }
@@ -274,28 +377,20 @@ function drawLetterGridSprite(sprite, worldX, worldY, cellScale) {
     ) {
       const letter = row[columnIndex];
 
-      /*
-        A period means the cell is transparent.
-      */
       if (letter === ".") {
         continue;
       }
 
       const color = palette[letter];
 
-      /*
-        Warn clearly if a sprite uses a palette role that does not exist.
-      */
       if (!color) {
         console.warn(
           `Sprite "${sprite.id}" uses undefined palette role "${letter}".`
         );
-
         continue;
       }
 
       context.fillStyle = color;
-
       context.fillRect(
         drawX + columnIndex * cellScale,
         drawY + rowIndex * cellScale,
@@ -345,22 +440,14 @@ function drawMap() {
 /* ------------------------------------------------------------------ */
 
 /*
-  Keep a number inside a minimum and maximum value.
+  Combine keyboard and analog joystick input.
 
-  Example:
-
-  clamp(12, 0, 10) returns 10.
-*/
-function clamp(value, minimum, maximum) {
-  return Math.max(minimum, Math.min(maximum, value));
-}
-
-/*
-  Read the currently held movement keys and return a direction vector.
+  The joystick provides smooth analog strength. Keyboard input remains
+  fully supported and can be used at the same time for testing.
 */
 function getMovementVector() {
-  let x = 0;
-  let y = 0;
+  let x = input.joystickX;
+  let y = input.joystickY;
 
   if (input.left) {
     x -= 1;
@@ -378,33 +465,21 @@ function getMovementVector() {
     y += 1;
   }
 
-  /*
-    Normalize diagonal movement so moving diagonally is not faster.
-  */
-  if (x !== 0 && y !== 0) {
-    const diagonalScale = 1 / Math.sqrt(2);
+  const length = Math.hypot(x, y);
 
-    x *= diagonalScale;
-    y *= diagonalScale;
+  if (length > 1) {
+    x /= length;
+    y /= length;
   }
 
   return { x, y };
 }
 
-/*
-  Update Mike's facing direction.
-
-  When moving diagonally, horizontal movement receives visual priority.
-*/
 function updateMikeDirection(movement) {
-  if (movement.x < 0) {
-    gameState.mike.direction = "left";
-  } else if (movement.x > 0) {
-    gameState.mike.direction = "right";
-  } else if (movement.y < 0) {
-    gameState.mike.direction = "up";
-  } else if (movement.y > 0) {
-    gameState.mike.direction = "down";
+  if (Math.abs(movement.x) > Math.abs(movement.y)) {
+    gameState.mike.direction = movement.x < 0 ? "left" : "right";
+  } else if (Math.abs(movement.y) > 0.01) {
+    gameState.mike.direction = movement.y < 0 ? "up" : "down";
   }
 }
 
@@ -416,13 +491,10 @@ function getMikeSprite() {
   switch (gameState.mike.direction) {
     case "up":
       return SPRITES.mikeUp;
-
     case "left":
       return SPRITES.mikeLeft;
-
     case "right":
       return SPRITES.mikeRight;
-
     case "down":
     default:
       return SPRITES.mikeDown;
@@ -433,13 +505,10 @@ function getHenrySprite() {
   switch (gameState.henry.direction) {
     case "up":
       return SPRITES.henryUp;
-
     case "left":
       return SPRITES.henryLeft;
-
     case "right":
       return SPRITES.henryRight;
-
     case "down":
     default:
       return SPRITES.henryDown;
@@ -450,24 +519,8 @@ function getHenrySprite() {
 /* Full-sprite map-boundary collision                                  */
 /* ------------------------------------------------------------------ */
 
-/*
-  Calculate the legal range for Mike's bottom-center anchor.
-
-  This is the important boundary correction.
-
-  Previously, the top boundary only considered a small collision body.
-  Mike's feet remained inside the map, but his head could leave it.
-
-  Now the outside map boundaries consider the entire rendered sprite:
-
-  - The top boundary reserves the full sprite height.
-  - The left boundary reserves half the sprite width.
-  - The right boundary reserves half the sprite width.
-  - The bottom boundary keeps Mike's feet inside the final canvas row.
-*/
 function getMikeMapBoundaries() {
   const mikeSprite = getMikeSprite();
-
   const spriteSize = getSpritePixelSize(
     mikeSprite,
     CHARACTER_CELL_SCALE
@@ -478,40 +531,22 @@ function getMikeMapBoundaries() {
   return {
     minimumX: halfSpriteWidth,
     maximumX: WORLD_WIDTH - halfSpriteWidth,
-
-    /*
-      Mike's y-coordinate represents his feet.
-
-      Therefore, his feet must remain at least one full sprite height
-      below the top of the canvas.
-    */
     minimumY: spriteSize.height,
-
-    /*
-      The feet may reach the final visible canvas row.
-    */
     maximumY: WORLD_HEIGHT - 1
   };
 }
 
-/*
-  Move Mike and keep his entire rendered sprite inside the map.
-*/
 function updateMike(deltaSeconds) {
   const movement = getMovementVector();
   const mike = gameState.mike;
 
-  mike.moving = movement.x !== 0 || movement.y !== 0;
+  mike.moving =
+    Math.abs(movement.x) > 0.01 || Math.abs(movement.y) > 0.01;
 
   if (!mike.moving) {
     return;
   }
 
-  /*
-    Update direction before calculating boundaries because left-facing
-    and right-facing sprites could eventually have different dimensions
-    from front-facing sprites.
-  */
   updateMikeDirection(movement);
 
   const proposedX =
@@ -539,9 +574,6 @@ function updateMike(deltaSeconds) {
 /* Henry delayed following                                             */
 /* ------------------------------------------------------------------ */
 
-/*
-  Save Mike's recent positions.
-*/
 function recordMikePosition(currentTime) {
   gameState.mikePositionHistory.push({
     time: currentTime,
@@ -550,9 +582,6 @@ function recordMikePosition(currentTime) {
     direction: gameState.mike.direction
   });
 
-  /*
-    Remove history records that are too old to be useful.
-  */
   const oldestUsefulTime =
     currentTime - gameState.henryDelayMilliseconds - 1000;
 
@@ -564,9 +593,6 @@ function recordMikePosition(currentTime) {
   }
 }
 
-/*
-  Select the newest Mike position that is old enough for Henry to follow.
-*/
 function findDelayedMikePosition(currentTime) {
   const targetTime =
     currentTime - gameState.henryDelayMilliseconds;
@@ -584,9 +610,6 @@ function findDelayedMikePosition(currentTime) {
   return delayedPosition;
 }
 
-/*
-  Henry moves toward Mike's delayed position.
-*/
 function updateHenry(currentTime, deltaSeconds) {
   const delayedPosition = findDelayedMikePosition(currentTime);
 
@@ -595,10 +618,8 @@ function updateHenry(currentTime, deltaSeconds) {
   }
 
   const henry = gameState.henry;
-
   const differenceX = delayedPosition.x - henry.x;
   const differenceY = delayedPosition.y - henry.y;
-
   const distance = Math.hypot(differenceX, differenceY);
 
   if (distance < 0.5) {
@@ -608,10 +629,6 @@ function updateHenry(currentTime, deltaSeconds) {
     return;
   }
 
-  /*
-    Henry moves slightly faster than Mike so he can recover naturally
-    after a temporary frame-rate slowdown.
-  */
   const henrySpeed = 86;
   const maximumStep = henrySpeed * deltaSeconds;
   const step = Math.min(maximumStep, distance);
@@ -619,9 +636,6 @@ function updateHenry(currentTime, deltaSeconds) {
   henry.x += (differenceX / distance) * step;
   henry.y += (differenceY / distance) * step;
 
-  /*
-    Use the strongest movement axis to choose Henry's facing direction.
-  */
   if (Math.abs(differenceX) > Math.abs(differenceY)) {
     henry.direction = differenceX < 0 ? "left" : "right";
   } else if (Math.abs(differenceY) > 0.01) {
@@ -633,12 +647,6 @@ function updateHenry(currentTime, deltaSeconds) {
 /* Scene rendering                                                     */
 /* ------------------------------------------------------------------ */
 
-/*
-  Draw the character farther up the map first.
-
-  The character farther down is drawn afterward and therefore appears
-  visually in front.
-*/
 function drawCharacters() {
   const characters = [
     {
@@ -667,15 +675,8 @@ function drawCharacters() {
   }
 }
 
-/*
-  Draw one complete frame.
-*/
 function renderGame() {
   context.clearRect(0, 0, canvas.width, canvas.height);
-
-  /*
-    Reconfirm crisp rendering in case browser state changes.
-  */
   context.imageSmoothingEnabled = false;
 
   drawMap();
@@ -687,9 +688,6 @@ function renderGame() {
 /* ------------------------------------------------------------------ */
 
 function gameLoop(currentTime) {
-  /*
-    The first frame has no previous timestamp.
-  */
   if (gameState.previousFrameTime === 0) {
     gameState.previousFrameTime = currentTime;
   }
@@ -697,11 +695,7 @@ function gameLoop(currentTime) {
   let deltaSeconds =
     (currentTime - gameState.previousFrameTime) / 1000;
 
-  /*
-    Prevent large movement jumps after the browser tab has been inactive.
-  */
   deltaSeconds = Math.min(deltaSeconds, 0.05);
-
   gameState.previousFrameTime = currentTime;
 
   updateMike(deltaSeconds);
@@ -712,9 +706,6 @@ function gameLoop(currentTime) {
   requestAnimationFrame(gameLoop);
 }
 
-/*
-  Add an initial history record before the first frame.
-*/
 gameState.mikePositionHistory.push({
   time: performance.now(),
   x: gameState.mike.x,
@@ -722,7 +713,4 @@ gameState.mikePositionHistory.push({
   direction: gameState.mike.direction
 });
 
-/*
-  Start the game.
-*/
 requestAnimationFrame(gameLoop);
