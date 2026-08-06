@@ -2,7 +2,7 @@
 
 /*
   Prairie Village
-  Phase 2.2 — Invisible Floating Mobile Controls
+  Phase 2.6 — Eight-Direction Digital Movement
 
   This file contains:
 
@@ -10,24 +10,28 @@
   2. Letter-grid sprite rendering
   3. Map rendering
   4. Keyboard input
-  5. Invisible left-half floating joystick input
-  6. Invisible right-half action input
-  7. Mike movement
-  8. Full-sprite map-boundary collision
-  9. Henry's delayed following
-  10. Stable Henry directional facing
-  11. The animation loop
+  5. Full-screen floating joystick input
+  6. Eight-direction digital movement
+  7. Full-screen action input
+  8. Mike movement
+  9. Full-sprite map-boundary collision
+  10. Henry's delayed following
+  11. Stable directional facing
+  12. The animation loop
 
-  It intentionally does not yet contain:
+  Mike can now move only in these eight directions:
 
-  - houses
-  - trees
-  - rabbits
-  - gardening
-  - crafting
-  - saving
-  - audio
-  - PWA registration
+  - up
+  - up-right
+  - right
+  - down-right
+  - down
+  - down-left
+  - left
+  - up-left
+
+  The touch joystick no longer produces analog movement speeds or
+  unlimited movement angles.
 */
 
 /* ------------------------------------------------------------------ */
@@ -54,6 +58,7 @@ window.addEventListener("load", () => {
 const TILE_SIZE = 16;
 const CHARACTER_CELL_SCALE = 2;
 const TERRAIN_CELL_SCALE = 2;
+
 const WORLD_WIDTH = canvas.width;
 const WORLD_HEIGHT = canvas.height;
 
@@ -69,7 +74,15 @@ const gameState = {
     y: 128,
     speed: 72,
     direction: "down",
-    moving: false
+    moving: false,
+
+    /*
+      Mike keeps track of his current visual facing axis.
+
+      This prevents his sprite from rapidly switching between horizontal
+      and vertical while moving diagonally.
+    */
+    facingAxis: "vertical"
   },
 
   henry: {
@@ -102,7 +115,10 @@ const input = {
   right: false,
 
   /*
-    Floating joystick values range from -1 to 1.
+    The joystick values describe thumb direction.
+
+    They are converted into one of eight fixed movement directions
+    before Mike moves.
   */
   joystickX: 0,
   joystickY: 0,
@@ -204,8 +220,8 @@ const joystickState = {
   The joystick radius is measured in screen pixels because pointer
   coordinates are screen coordinates.
 
-  This value remains comfortable across different phone sizes while
-  still allowing full movement without requiring a large thumb motion.
+  The joystick is invisible and begins wherever the player first places
+  their thumb inside the left movement area.
 */
 function getJoystickRadius() {
   const zoneRectangle = joystickZone.getBoundingClientRect();
@@ -219,15 +235,17 @@ function getJoystickRadius() {
 
 function resetJoystick() {
   joystickState.activePointerId = null;
+
   input.joystickX = 0;
   input.joystickY = 0;
 }
 
 /*
-  Convert the thumb's movement away from its original touch point into
-  analog input.
+  Record the raw direction from the joystick origin to the player's
+  current thumb position.
 
-  The first touch location is the invisible joystick center.
+  Movement strength is not used. Once outside the dead zone, this raw
+  direction is later snapped to one of eight fixed directions.
 */
 function updateJoystickFromPointer(event) {
   const differenceX = event.clientX - joystickState.originX;
@@ -235,7 +253,7 @@ function updateJoystickFromPointer(event) {
 
   const distance = Math.hypot(differenceX, differenceY);
   const maximumRadius = getJoystickRadius();
-  const deadZone = maximumRadius * 0.12;
+  const deadZone = maximumRadius * 0.16;
 
   if (distance <= deadZone) {
     input.joystickX = 0;
@@ -244,23 +262,13 @@ function updateJoystickFromPointer(event) {
   }
 
   /*
-    Remove the dead zone smoothly instead of causing movement to jump
-    abruptly from zero.
+    Store only a normalized direction.
+
+    This removes analog speed. Mike will move at his normal full walking
+    speed whenever the thumb is outside the dead zone.
   */
-  const usableDistance = maximumRadius - deadZone;
-  const adjustedDistance = Math.min(
-    Math.max(distance - deadZone, 0),
-    usableDistance
-  );
-
-  const strength =
-    usableDistance > 0 ? adjustedDistance / usableDistance : 0;
-
-  const directionX = differenceX / distance;
-  const directionY = differenceY / distance;
-
-  input.joystickX = directionX * strength;
-  input.joystickY = directionY * strength;
+  input.joystickX = differenceX / distance;
+  input.joystickY = differenceY / distance;
 }
 
 joystickZone.addEventListener("pointerdown", (event) => {
@@ -277,7 +285,7 @@ joystickZone.addEventListener("pointerdown", (event) => {
   joystickZone.setPointerCapture(event.pointerId);
 
   /*
-    The first touch establishes the center, so movement begins at zero.
+    The first touch establishes the invisible joystick center.
   */
   input.joystickX = 0;
   input.joystickY = 0;
@@ -319,7 +327,7 @@ joystickZone.addEventListener("lostpointercapture", (event) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Invisible right-half action control                                 */
+/* Invisible right-side action control                                 */
 /* ------------------------------------------------------------------ */
 
 const actionState = {
@@ -335,6 +343,7 @@ actionZone.addEventListener("pointerdown", (event) => {
 
   actionState.activePointerId = event.pointerId;
   actionZone.setPointerCapture(event.pointerId);
+
   setActionState(true);
 });
 
@@ -350,6 +359,7 @@ function finishActionPointer(event) {
   }
 
   actionState.activePointerId = null;
+
   setActionState(false);
 }
 
@@ -367,7 +377,7 @@ actionZone.addEventListener("lostpointercapture", (event) => {
 });
 
 /*
-  Prevent synthetic clicks after touch interactions.
+  Prevent a synthetic browser click after a touch interaction.
 */
 actionZone.addEventListener("click", (event) => {
   event.preventDefault();
@@ -409,20 +419,33 @@ function getSpritePixelSize(sprite, cellScale) {
 function drawLetterGridSprite(sprite, worldX, worldY, cellScale) {
   const grid = sprite.grid;
   const palette = sprite.palette;
-  const spriteSize = getSpritePixelSize(sprite, cellScale);
+
+  const spriteSize = getSpritePixelSize(
+    sprite,
+    cellScale
+  );
 
   let drawX = worldX;
   let drawY = worldY;
 
   if (sprite.anchor === "bottom-center") {
-    drawX = Math.round(worldX - spriteSize.width / 2);
-    drawY = Math.round(worldY - spriteSize.height);
+    drawX = Math.round(
+      worldX - spriteSize.width / 2
+    );
+
+    drawY = Math.round(
+      worldY - spriteSize.height
+    );
   } else {
     drawX = Math.round(worldX);
     drawY = Math.round(worldY);
   }
 
-  for (let rowIndex = 0; rowIndex < grid.length; rowIndex += 1) {
+  for (
+    let rowIndex = 0;
+    rowIndex < grid.length;
+    rowIndex += 1
+  ) {
     const row = grid[rowIndex];
 
     for (
@@ -442,6 +465,7 @@ function drawLetterGridSprite(sprite, worldX, worldY, cellScale) {
         console.warn(
           `Sprite "${sprite.id}" uses undefined palette role "${letter}".`
         );
+
         continue;
       }
 
@@ -462,7 +486,11 @@ function drawLetterGridSprite(sprite, worldX, worldY, cellScale) {
 /* ------------------------------------------------------------------ */
 
 function drawMap() {
-  for (let rowIndex = 0; rowIndex < MAP_DATA.length; rowIndex += 1) {
+  for (
+    let rowIndex = 0;
+    rowIndex < MAP_DATA.length;
+    rowIndex += 1
+  ) {
     const mapRow = MAP_DATA[rowIndex];
 
     for (
@@ -474,7 +502,10 @@ function drawMap() {
       const tileSprite = TILE_TYPES[tileCode];
 
       if (!tileSprite) {
-        console.warn(`Unknown map tile code: "${tileCode}"`);
+        console.warn(
+          `Unknown map tile code: "${tileCode}"`
+        );
+
         continue;
       }
 
@@ -492,12 +523,63 @@ function drawMap() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Mike movement                                                       */
+/* Eight-direction movement                                            */
 /* ------------------------------------------------------------------ */
 
-function getMovementVector() {
-  let x = input.joystickX;
-  let y = input.joystickY;
+/*
+  The eight available digital directions.
+
+  Diagonal values are normalized so diagonal movement is not faster than
+  horizontal or vertical movement.
+*/
+const EIGHT_DIRECTIONS = [
+  { x: 1, y: 0 },
+  { x: Math.SQRT1_2, y: Math.SQRT1_2 },
+  { x: 0, y: 1 },
+  { x: -Math.SQRT1_2, y: Math.SQRT1_2 },
+  { x: -1, y: 0 },
+  { x: -Math.SQRT1_2, y: -Math.SQRT1_2 },
+  { x: 0, y: -1 },
+  { x: Math.SQRT1_2, y: -Math.SQRT1_2 }
+];
+
+/*
+  Convert any joystick angle into the nearest of eight fixed directions.
+
+  Each direction occupies a 45-degree section of the joystick circle.
+*/
+function snapToEightDirections(x, y) {
+  if (
+    Math.abs(x) < 0.01 &&
+    Math.abs(y) < 0.01
+  ) {
+    return { x: 0, y: 0 };
+  }
+
+  const angle = Math.atan2(y, x);
+
+  let directionIndex = Math.round(
+    angle / (Math.PI / 4)
+  );
+
+  if (directionIndex < 0) {
+    directionIndex += 8;
+  }
+
+  directionIndex %= 8;
+
+  return EIGHT_DIRECTIONS[directionIndex];
+}
+
+/*
+  Keyboard movement already behaves like a digital D-pad.
+
+  Opposing keys cancel each other. Pressing one horizontal and one
+  vertical direction produces a normalized diagonal.
+*/
+function getKeyboardMovementVector() {
+  let x = 0;
+  let y = 0;
 
   if (input.left) {
     x -= 1;
@@ -515,22 +597,82 @@ function getMovementVector() {
     y += 1;
   }
 
-  const length = Math.hypot(x, y);
-
-  if (length > 1) {
-    x /= length;
-    y /= length;
+  if (x !== 0 && y !== 0) {
+    x *= Math.SQRT1_2;
+    y *= Math.SQRT1_2;
   }
 
   return { x, y };
 }
 
+/*
+  Keyboard input receives priority when keyboard keys are held.
+
+  Otherwise, the floating touch joystick is snapped to one of the eight
+  digital directions.
+*/
+function getMovementVector() {
+  const keyboardMovement =
+    getKeyboardMovementVector();
+
+  const keyboardIsActive =
+    keyboardMovement.x !== 0 ||
+    keyboardMovement.y !== 0;
+
+  if (keyboardIsActive) {
+    return keyboardMovement;
+  }
+
+  return snapToEightDirections(
+    input.joystickX,
+    input.joystickY
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Mike directional facing                                             */
+/* ------------------------------------------------------------------ */
+
+/*
+  Mike has four visual sprite directions but eight movement directions.
+
+  During diagonal movement, Mike keeps his current horizontal or
+  vertical facing axis. This prevents his sprite from flickering between
+  two different sprites while his movement remains diagonal.
+*/
 function updateMikeDirection(movement) {
-  if (Math.abs(movement.x) > Math.abs(movement.y)) {
-    gameState.mike.direction =
-      movement.x < 0 ? "left" : "right";
-  } else if (Math.abs(movement.y) > 0.01) {
-    gameState.mike.direction =
+  const mike = gameState.mike;
+
+  const absoluteX = Math.abs(movement.x);
+  const absoluteY = Math.abs(movement.y);
+
+  const minimumMovement = 0.01;
+  const switchRatio = 1.1;
+
+  if (
+    absoluteX < minimumMovement &&
+    absoluteY < minimumMovement
+  ) {
+    return;
+  }
+
+  if (mike.facingAxis === "horizontal") {
+    if (absoluteY > absoluteX * switchRatio) {
+      mike.facingAxis = "vertical";
+    }
+  } else if (
+    absoluteX > absoluteY * switchRatio
+  ) {
+    mike.facingAxis = "horizontal";
+  }
+
+  if (mike.facingAxis === "horizontal") {
+    if (absoluteX >= minimumMovement) {
+      mike.direction =
+        movement.x < 0 ? "left" : "right";
+    }
+  } else if (absoluteY >= minimumMovement) {
+    mike.direction =
       movement.y < 0 ? "up" : "down";
   }
 }
@@ -585,11 +727,14 @@ function getMikeMapBoundaries() {
     CHARACTER_CELL_SCALE
   );
 
-  const halfSpriteWidth = spriteSize.width / 2;
+  const halfSpriteWidth =
+    spriteSize.width / 2;
 
   return {
     minimumX: halfSpriteWidth,
-    maximumX: WORLD_WIDTH - halfSpriteWidth,
+    maximumX:
+      WORLD_WIDTH - halfSpriteWidth,
+
     minimumY: spriteSize.height,
     maximumY: WORLD_HEIGHT - 1
   };
@@ -610,12 +755,19 @@ function updateMike(deltaSeconds) {
   updateMikeDirection(movement);
 
   const proposedX =
-    mike.x + movement.x * mike.speed * deltaSeconds;
+    mike.x +
+    movement.x *
+    mike.speed *
+    deltaSeconds;
 
   const proposedY =
-    mike.y + movement.y * mike.speed * deltaSeconds;
+    mike.y +
+    movement.y *
+    mike.speed *
+    deltaSeconds;
 
-  const boundaries = getMikeMapBoundaries();
+  const boundaries =
+    getMikeMapBoundaries();
 
   mike.x = clamp(
     proposedX,
@@ -643,11 +795,14 @@ function recordMikePosition(currentTime) {
   });
 
   const oldestUsefulTime =
-    currentTime - gameState.henryDelayMilliseconds - 1000;
+    currentTime -
+    gameState.henryDelayMilliseconds -
+    1000;
 
   while (
     gameState.mikePositionHistory.length > 2 &&
-    gameState.mikePositionHistory[0].time < oldestUsefulTime
+    gameState.mikePositionHistory[0].time <
+      oldestUsefulTime
   ) {
     gameState.mikePositionHistory.shift();
   }
@@ -655,11 +810,15 @@ function recordMikePosition(currentTime) {
 
 function findDelayedMikePosition(currentTime) {
   const targetTime =
-    currentTime - gameState.henryDelayMilliseconds;
+    currentTime -
+    gameState.henryDelayMilliseconds;
 
   let delayedPosition = null;
 
-  for (const position of gameState.mikePositionHistory) {
+  for (
+    const position of
+    gameState.mikePositionHistory
+  ) {
     if (position.time <= targetTime) {
       delayedPosition = position;
     } else {
@@ -675,9 +834,6 @@ function findDelayedMikePosition(currentTime) {
 
   Switching axes requires the new axis to be clearly stronger than the
   current one. Near a diagonal, Henry keeps the axis he already has.
-
-  This is a small form of hysteresis: the threshold for switching is
-  intentionally stronger than the threshold for staying.
 */
 function updateHenryDirection(
   differenceX,
@@ -686,8 +842,11 @@ function updateHenryDirection(
 ) {
   const henry = gameState.henry;
 
-  const absoluteX = Math.abs(differenceX);
-  const absoluteY = Math.abs(differenceY);
+  const absoluteX =
+    Math.abs(differenceX);
+
+  const absoluteY =
+    Math.abs(differenceY);
 
   const minimumMovement = 0.01;
   const switchRatio = 1.25;
@@ -708,38 +867,48 @@ function updateHenryDirection(
   }
 
   if (henry.facingAxis === "horizontal") {
-    /*
-      Stay horizontal unless vertical movement is clearly stronger.
-    */
-    if (absoluteY > absoluteX * switchRatio) {
+    if (
+      absoluteY >
+      absoluteX * switchRatio
+    ) {
       henry.facingAxis = "vertical";
     }
-  } else {
-    /*
-      Stay vertical unless horizontal movement is clearly stronger.
-    */
-    if (absoluteX > absoluteY * switchRatio) {
-      henry.facingAxis = "horizontal";
-    }
+  } else if (
+    absoluteX >
+    absoluteY * switchRatio
+  ) {
+    henry.facingAxis = "horizontal";
   }
 
   if (henry.facingAxis === "horizontal") {
     if (absoluteX >= minimumMovement) {
       henry.direction =
-        differenceX < 0 ? "left" : "right";
+        differenceX < 0
+          ? "left"
+          : "right";
     } else {
-      henry.direction = delayedDirection;
+      henry.direction =
+        delayedDirection;
     }
-  } else if (absoluteY >= minimumMovement) {
+  } else if (
+    absoluteY >= minimumMovement
+  ) {
     henry.direction =
-      differenceY < 0 ? "up" : "down";
+      differenceY < 0
+        ? "up"
+        : "down";
   } else {
-    henry.direction = delayedDirection;
+    henry.direction =
+      delayedDirection;
   }
 }
 
-function updateHenry(currentTime, deltaSeconds) {
-  const delayedPosition = findDelayedMikePosition(currentTime);
+function updateHenry(
+  currentTime,
+  deltaSeconds
+) {
+  const delayedPosition =
+    findDelayedMikePosition(currentTime);
 
   if (!delayedPosition) {
     return;
@@ -747,14 +916,23 @@ function updateHenry(currentTime, deltaSeconds) {
 
   const henry = gameState.henry;
 
-  const differenceX = delayedPosition.x - henry.x;
-  const differenceY = delayedPosition.y - henry.y;
-  const distance = Math.hypot(differenceX, differenceY);
+  const differenceX =
+    delayedPosition.x - henry.x;
+
+  const differenceY =
+    delayedPosition.y - henry.y;
+
+  const distance = Math.hypot(
+    differenceX,
+    differenceY
+  );
 
   if (distance < 0.5) {
     henry.x = delayedPosition.x;
     henry.y = delayedPosition.y;
-    henry.direction = delayedPosition.direction;
+
+    henry.direction =
+      delayedPosition.direction;
 
     henry.facingAxis =
       delayedPosition.direction === "left" ||
@@ -766,11 +944,20 @@ function updateHenry(currentTime, deltaSeconds) {
   }
 
   const henrySpeed = 86;
-  const maximumStep = henrySpeed * deltaSeconds;
-  const step = Math.min(maximumStep, distance);
 
-  henry.x += (differenceX / distance) * step;
-  henry.y += (differenceY / distance) * step;
+  const maximumStep =
+    henrySpeed * deltaSeconds;
+
+  const step = Math.min(
+    maximumStep,
+    distance
+  );
+
+  henry.x +=
+    (differenceX / distance) * step;
+
+  henry.y +=
+    (differenceY / distance) * step;
 
   updateHenryDirection(
     differenceX,
@@ -797,9 +984,17 @@ function drawCharacters() {
     }
   ];
 
-  characters.sort((firstCharacter, secondCharacter) => {
-    return firstCharacter.y - secondCharacter.y;
-  });
+  characters.sort(
+    (
+      firstCharacter,
+      secondCharacter
+    ) => {
+      return (
+        firstCharacter.y -
+        secondCharacter.y
+      );
+    }
+  );
 
   for (const character of characters) {
     drawLetterGridSprite(
@@ -812,7 +1007,13 @@ function drawCharacters() {
 }
 
 function renderGame() {
-  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.clearRect(
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
   context.imageSmoothingEnabled = false;
 
   drawMap();
@@ -824,19 +1025,35 @@ function renderGame() {
 /* ------------------------------------------------------------------ */
 
 function gameLoop(currentTime) {
-  if (gameState.previousFrameTime === 0) {
-    gameState.previousFrameTime = currentTime;
+  if (
+    gameState.previousFrameTime === 0
+  ) {
+    gameState.previousFrameTime =
+      currentTime;
   }
 
   let deltaSeconds =
-    (currentTime - gameState.previousFrameTime) / 1000;
+    (
+      currentTime -
+      gameState.previousFrameTime
+    ) / 1000;
 
-  deltaSeconds = Math.min(deltaSeconds, 0.05);
-  gameState.previousFrameTime = currentTime;
+  deltaSeconds = Math.min(
+    deltaSeconds,
+    0.05
+  );
+
+  gameState.previousFrameTime =
+    currentTime;
 
   updateMike(deltaSeconds);
   recordMikePosition(currentTime);
-  updateHenry(currentTime, deltaSeconds);
+
+  updateHenry(
+    currentTime,
+    deltaSeconds
+  );
+
   renderGame();
 
   requestAnimationFrame(gameLoop);
