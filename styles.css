@@ -1,9 +1,15 @@
 /*
   Prairie Village
-  Phase 2.2 — Invisible Floating Mobile Controls
+  Phase 2.4 — Landscape Mobile Presentation
 
-  This file controls the page presentation and invisible mobile input
-  overlay. The game world itself is drawn in game.js.
+  This file provides:
+
+  1. The normal desktop page presentation
+  2. Invisible split-screen mobile controls
+  3. A portrait-mode rotation message
+  4. A near-fullscreen landscape mobile layout
+
+  The game world itself is drawn in game.js.
 */
 
 * {
@@ -32,9 +38,14 @@ body {
   background: #e9e2cf;
 }
 
+/* ------------------------------------------------------------------ */
+/* Normal desktop and large-screen layout                              */
+/* ------------------------------------------------------------------ */
+
 .game-shell {
   width: min(100%, 760px);
   margin: 0 auto;
+
   padding:
     max(24px, env(safe-area-inset-top))
     max(16px, env(safe-area-inset-right))
@@ -49,6 +60,7 @@ body {
 
 .eyebrow {
   margin: 0 0 4px;
+
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -57,6 +69,7 @@ body {
 
 h1 {
   margin: 0;
+
   font-size: clamp(1.5rem, 5vw, 2.25rem);
   line-height: 1.15;
 }
@@ -69,14 +82,19 @@ h1 {
 .canvas-frame {
   display: flex;
   justify-content: center;
+  align-items: center;
+
   width: 100%;
   padding: 10px;
   overflow: hidden;
 
   border: 4px solid #5b654c;
   border-radius: 8px;
+
   background: #c9c0a7;
-  box-shadow: 0 8px 24px rgb(39 49 38 / 18%);
+
+  box-shadow:
+    0 8px 24px rgb(39 49 38 / 18%);
 }
 
 /*
@@ -84,16 +102,20 @@ h1 {
 */
 .game-stage {
   position: relative;
+
   width: 100%;
   max-width: 640px;
   aspect-ratio: 4 / 3;
+
   overflow: hidden;
+
   border-radius: 2px;
   background: #8fa36a;
 }
 
 #game-canvas {
   display: block;
+
   width: 100%;
   height: 100%;
 
@@ -101,6 +123,7 @@ h1 {
   image-rendering: crisp-edges;
 
   background: #8fa36a;
+
   touch-action: none;
 }
 
@@ -121,27 +144,27 @@ h1 {
   display: none;
   grid-template-columns: 1fr 1fr;
 
+  background: transparent;
+
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
-  touch-action: none;
 
-  /*
-    The overlay is intentionally invisible.
-  */
-  background: transparent;
+  touch-action: none;
 }
 
 .control-zone {
   position: relative;
+
   min-width: 0;
   min-height: 0;
 
-  background: transparent;
   border: 0;
   outline: 0;
+  background: transparent;
 
   touch-action: none;
+
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -150,8 +173,13 @@ h1 {
   pointer-events: auto;
 }
 
+/* ------------------------------------------------------------------ */
+/* Footer                                                              */
+/* ------------------------------------------------------------------ */
+
 .game-footer {
   margin-top: 16px;
+
   text-align: center;
   font-size: 0.9rem;
   color: #4a5544;
@@ -161,17 +189,231 @@ h1 {
   margin: 0;
 }
 
-/*
-  Show the touch overlay when the primary input is touch-like.
+/* ------------------------------------------------------------------ */
+/* Portrait-mode rotation message                                      */
+/* ------------------------------------------------------------------ */
 
-  The width fallback also helps phones whose browser reports unusual
-  pointer capabilities.
+.orientation-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+
+  display: none;
+  place-items: center;
+
+  padding:
+    max(24px, env(safe-area-inset-top))
+    max(24px, env(safe-area-inset-right))
+    max(24px, env(safe-area-inset-bottom))
+    max(24px, env(safe-area-inset-left));
+
+  text-align: center;
+
+  color: #273126;
+  background: #e9e2cf;
+}
+
+.orientation-card {
+  width: min(100%, 360px);
+  padding: 28px 24px;
+
+  border: 3px solid #5b654c;
+  border-radius: 12px;
+
+  background: #f3eddd;
+
+  box-shadow:
+    0 10px 30px rgb(39 49 38 / 16%);
+}
+
+.orientation-icon {
+  display: grid;
+  place-items: center;
+
+  width: 72px;
+  height: 48px;
+  margin: 0 auto 20px;
+
+  border: 4px solid #5b654c;
+  border-radius: 8px;
+
+  font-size: 2rem;
+  line-height: 1;
+
+  color: #5b654c;
+  background: #d8d0b8;
+}
+
+.orientation-eyebrow {
+  margin: 0 0 5px;
+
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.orientation-card h1 {
+  font-size: clamp(1.5rem, 7vw, 2rem);
+}
+
+.orientation-card p:last-child {
+  margin: 12px 0 0;
+  line-height: 1.5;
+  color: #4a5544;
+}
+
+/* ------------------------------------------------------------------ */
+/* Touch-device controls                                               */
+/* ------------------------------------------------------------------ */
+
+/*
+  Show the invisible control overlay whenever the device is touch-like.
+
+  The width fallback helps devices that report unusual pointer settings.
 */
 @media (hover: none) and (pointer: coarse), (max-width: 700px) {
   .touch-controls {
     display: grid;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Portrait phones and small portrait touch devices                    */
+/* ------------------------------------------------------------------ */
+
+/*
+  In portrait orientation, hide the game and ask the player to rotate
+  the device.
+
+  Desktop computers are not affected unless the browser window is
+  unusually narrow.
+*/
+@media
+  (orientation: portrait) and (hover: none) and (pointer: coarse),
+  (orientation: portrait) and (max-width: 700px) {
+
+  body {
+    overflow: hidden;
+  }
+
+  .orientation-gate {
+    display: grid;
+  }
+
+  .game-shell {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Landscape phones and tablets                                       */
+/* ------------------------------------------------------------------ */
+
+/*
+  On a landscape touch device, the game becomes the page.
+
+  The heading, instructions, footer, decorative border, and outside
+  spacing are removed so the canvas receives as much room as possible.
+*/
+@media
+  (orientation: landscape) and (hover: none) and (pointer: coarse),
+  (orientation: landscape) and (max-height: 600px) {
+
+  html,
+  body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    min-height: 100vh;
+    min-height: 100dvh;
+
+    background: #273126;
+  }
+
+  .orientation-gate {
+    display: none;
+  }
+
+  .game-shell {
+    display: flex;
+    align-items: stretch;
+
+    width: 100vw;
+    max-width: none;
+
+    height: 100vh;
+    height: 100dvh;
+
+    margin: 0;
+    padding: 0;
+  }
+
+  .game-header,
+  .game-footer {
+    display: none;
+  }
+
+  .canvas-frame {
+    display: grid;
+    flex: 1;
+    place-items: center;
+
+    width: 100%;
+    height: 100%;
+
+    padding:
+      env(safe-area-inset-top)
+      env(safe-area-inset-right)
+      env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+
+    border: 0;
+    border-radius: 0;
+
+    background: #273126;
+
+    box-shadow: none;
+  }
+
+  /*
+    Preserve the original 4:3 world.
+
+    On extra-wide phones, the unused space remains beside the game
+    rather than stretching or cropping the artwork.
+  */
+  .game-stage {
+    width: min(
+      100%,
+      calc(
+        (
+          100dvh -
+          env(safe-area-inset-top) -
+          env(safe-area-inset-bottom)
+        ) * 4 / 3
+      )
+    );
+
+    max-width: none;
+    max-height: 100%;
+
+    aspect-ratio: 4 / 3;
+
+    border-radius: 0;
+  }
+
+  #game-canvas {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Small normal browser windows                                        */
+/* ------------------------------------------------------------------ */
 
 @media (max-width: 480px) {
   .game-shell {
