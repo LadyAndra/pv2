@@ -2,7 +2,7 @@
 
 /*
   Prairie Village
-  Phase 2.6 — Eight-Direction Digital Movement
+  Phase 2.7 — Wider Landscape Game View
 
   This file contains:
 
